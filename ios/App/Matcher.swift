@@ -120,6 +120,33 @@ enum Matcher {
         }
         return (.found, best.1, alternatives)
     }
+
+    /// A name for a new playlist: the imported file's name when there is one,
+    /// otherwise the two most frequent artists ("Metallica, Gojira e altri").
+    static func suggestedName(fileName: String?, lines: [Line]) -> String {
+        if let fileName {
+            let words = (fileName as NSString).deletingPathExtension
+                .replacingOccurrences(of: "_", with: " ").split(separator: " ").joined(separator: " ")
+            if !words.isEmpty { return words.prefix(1).uppercased() + words.dropFirst() }
+        }
+        // artists compared normalized ("metallica" = "Metallica"), shown as first written
+        var counts: [String: Int] = [:]
+        var order: [(key: String, name: String)] = []
+        for line in lines {
+            let key = normalize(line.artist)
+            if counts[key] == nil { order.append((key, line.artist)) }
+            counts[key, default: 0] += 1
+        }
+        // most frequent first, ties in list order
+        let top = order.enumerated().sorted { (counts[$0.element.key]!, -$0.offset) > (counts[$1.element.key]!, -$1.offset) }
+            .map(\.element.name)
+        switch top.count {
+        case 0: return "Nuova playlist"
+        case 1: return top[0]
+        case 2: return "\(top[0]) e \(top[1])"
+        default: return "\(top[0]), \(top[1]) e altri"
+        }
+    }
 }
 
 /// A Spotify track as the app needs it.

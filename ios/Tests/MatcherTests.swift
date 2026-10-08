@@ -123,4 +123,21 @@ final class MatcherTests: XCTestCase {
         let line = Matcher.parse("Megadeth - A Tout le Monde").lines[0]
         XCTAssertEqual(Matcher.decide(line, [t("Megadeth", "À Tout le Monde")]).status, .found)
     }
+
+    func testSuggestedNameFromFile() {
+        XCTAssertEqual(Matcher.suggestedName(fileName: "rock_metal_playlist.txt", lines: []), "Rock metal playlist")
+    }
+
+    func testSuggestedNameFromArtists() {
+        let lines = Matcher.parse("""
+        Tool - Schism
+        Gojira - Flying Whales
+        gojira - Stranded
+        Tool - Lateralus
+        Death - Symbolic
+        """).lines
+        XCTAssertEqual(Matcher.suggestedName(fileName: nil, lines: lines), "Tool, Gojira e altri")
+        XCTAssertEqual(Matcher.suggestedName(fileName: nil, lines: Array(lines.prefix(1))), "Tool")
+        XCTAssertEqual(Matcher.suggestedName(fileName: nil, lines: []), "Nuova playlist")
+    }
 }

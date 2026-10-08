@@ -31,7 +31,7 @@ struct ContentView: View {
     }
 }
 
-/// Paste or import a .txt, then ANALIZZA.
+/// Paste or import a .txt, then Analizza.
 struct InputView: View {
     @EnvironmentObject private var model: AppModel
     @State private var importing = false
@@ -64,7 +64,7 @@ struct InputView: View {
                 ProgressView(value: Double(model.progress), total: Double(max(model.lineCount, 1)))
                 Text("Cerco \(model.progress) / \(model.lineCount)…").font(.footnote).foregroundStyle(.secondary)
             } else {
-                BigButton(model.spotify.isLoggedIn ? "ANALIZZA" : "ACCEDI A SPOTIFY E ANALIZZA") {
+                BigButton(model.spotify.isLoggedIn ? "Analizza" : "Accedi a Spotify e analizza") {
                     Task { await model.analyze() }
                 }
                 .disabled(model.lineCount == 0)
@@ -75,7 +75,7 @@ struct InputView: View {
             guard case .success(let url) = result else { return }
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
-            if let text = try? String(contentsOf: url, encoding: .utf8) { model.text = text }
+            if let text = try? String(contentsOf: url, encoding: .utf8) { model.loadFile(url.lastPathComponent, text) }
         }
     }
 }
@@ -94,7 +94,7 @@ struct SummaryView: View {
             }
             .font(.title3)
             Spacer()
-            BigButton("CONTINUA") { model.next() }
+            BigButton("Continua") { model.next() }
         }
         .padding()
     }
@@ -120,7 +120,7 @@ struct ReviewView: View {
                     Text("Scegli una versione o salta: \(model.pending.count) da sistemare")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
-                BigButton("CONTINUA") { model.next() }.disabled(!model.pending.isEmpty)
+                BigButton("Continua") { model.next() }.disabled(!model.pending.isEmpty)
             }
             .padding()
             .background(.bar)
@@ -185,30 +185,62 @@ struct DestinationView: View {
     var body: some View {
         VStack(spacing: 20) {
             Text("\(model.readyTracks.count) / \(model.items.count) brani pronti").font(.title2.bold())
-            Text("Dove vuoi creare la playlist?").foregroundStyle(.secondary)
+            Text("Dove vuoi la playlist?").foregroundStyle(.secondary)
             Spacer()
-            BigButton("SPOTIFY") { model.step = .spotify }
-            BigButton("DEMUS", secondary: true) { model.step = .demus }
+            BigButton("Spotify") { model.openSpotifyStep() }
+            BigButton("Demus", secondary: true) { model.step = .demus }
         }
         .padding()
     }
 }
 
+/// New playlist (suggested name, editable) or one you already have: only the missing songs are added.
 struct SpotifyView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("\(model.readyTracks.count) / \(model.items.count) brani pronti").font(.title2.bold())
-            TextField("Nome playlist", text: $model.playlistName)
-                .textFieldStyle(.roundedBorder).font(.title3).textInputAutocapitalization(.characters)
-            Spacer()
-            if model.busy { ProgressView("Creo la playlist…") } else {
-                BigButton("CREA PLAYLIST") { Task { await model.createPlaylist() } }
-                    .disabled(model.readyTracks.isEmpty || model.playlistName.trimmingCharacters(in: .whitespaces).isEmpty)
+        Form {
+            Section {
+                Text("\(model.readyTracks.count) di \(model.items.count) brani pronti").font(.headline)
+            }
+            Section {
+                Picker("Playlist", selection: $model.target) {
+                    Text("Nuova playlist").tag(String?.none)
+                    ForEach(model.playlists) { p in
+                        Text(p.name).tag(Optional(p.id))
+                    }
+                }
+                .pickerStyle(.navigationLink)
+                if model.target == nil {
+                    TextField("Nome della playlist", text: $model.playlistName)
+                        .textInputAutocapitalization(.sentences)
+                        .submitLabel(.done)
+                }
+            } header: {
+                HStack {
+                    Text("Destinazione")
+                    if model.loadingPlaylists { Spacer(); ProgressView() }
+                }
+            } footer: {
+                if let existing = model.existingTarget {
+                    Text("\"\(existing.name)\" c'è già sul tuo Spotify: aggiungo in coda solo i brani che mancano, nell'ordine della lista.")
+                } else {
+                    Text("Nome proposto in base alla lista: puoi cambiarlo.")
+                }
             }
         }
-        .padding()
+        .safeAreaInset(edge: .bottom) {
+            Group {
+                if model.busy { ProgressView(model.existingTarget == nil ? "Creo la playlist…" : "Aggiorno la playlist…") } else {
+                    BigButton(model.existingTarget == nil ? "Crea playlist" : "Aggiorna playlist") { Task { await model.savePlaylist() } }
+                        .disabled(model.readyTracks.isEmpty || (model.existingTarget == nil && model.playlistName.trimmingCharacters(in: .whitespaces).isEmpty))
+                }
+            }
+            .padding()
+            .background(.bar)
+        }
+        .task { await model.loadPlaylists() }
+        .refreshable { await model.loadPlaylists() }
     }
 }
 
@@ -218,10 +250,14 @@ struct DoneView: View {
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "checkmark.circle.fill").font(.system(size: 64)).foregroundStyle(.green)
-            Text("Playlist creata.").font(.title.bold())
-            Text("\(model.createdCount) brani").foregroundStyle(.secondary)
+            Text(model.alreadyThere == nil ? "Playlist creata" : "Playlist aggiornata").font(.title.bold())
+            if let already = model.alreadyThere {
+                Text("\(model.createdCount) \(model.createdCount == 1 ? "brano aggiunto" : "brani aggiunti"), \(already) già \(already == 1 ? "presente" : "presenti")").foregroundStyle(.secondary)
+            } else {
+                Text("\(model.createdCount) brani").foregroundStyle(.secondary)
+            }
             Spacer()
-            BigButton("APRI SPOTIFY") { model.openInSpotify() }
+            BigButton("Apri in Spotify") { model.openInSpotify() }
             if let url = model.created?.url {
                 ShareLink("Condividi link (anche per Demus)", item: url)
             }
@@ -244,7 +280,7 @@ struct DemusView: View {
             }
             .padding(8)
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-            BigButton(copied ? "COPIATO ✓" : "COPIA ELENCO") {
+            BigButton(copied ? "Copiato" : "Copia elenco") {
                 UIPasteboard.general.string = model.demusText
                 copied = true
             }
@@ -266,11 +302,16 @@ struct BigButton: View {
         self.action = action
     }
 
+    /// System button styles and colors: they follow light/dark mode and the iPhone's settings on their own.
     var body: some View {
-        Button(action: action) {
-            Text(title).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
+        if secondary {
+            Button(action: action) { label }.buttonStyle(.bordered)
+        } else {
+            Button(action: action) { label }.buttonStyle(.borderedProminent)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(secondary ? .gray : .accentColor)
+    }
+
+    private var label: some View {
+        Text(title).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 8)
     }
 }

@@ -17,7 +17,9 @@ Incolla una lista `Artista - Titolo` (o importa un `.txt`), l'app trova i brani 
 ## Spotify
 - Login PKCE (nessun client secret), refresh token solo nel Portachiavi dell'iPhone.
 - Endpoint dopo le modifiche di febbraio 2026: `GET /v1/search` (max 10 risultati), `POST /v1/me/playlists`, `POST /v1/playlists/{id}/items` (100 brani per richiesta, in ordine).
-- Permesso usato: `playlist-modify-private`. Redirect URI: `playlist-importer://spotify-callback`.
+- Permessi usati: `playlist-read-private` (trova le tue playlist), `playlist-modify-private` e `playlist-modify-public` (crea o aggiorna). Redirect URI: `playlist-importer://spotify-callback`. Dopo l'aggiornamento l'app chiede di nuovo l'accesso una volta, per i nuovi permessi.
+- Playlist esistente: scegli una tua playlist (o scrivi un nome che hai già) e l'app aggiunge in coda solo i brani che mancano, nell'ordine della lista.
+- SideStore: aggiungi la sorgente `https://github.com/Redwraith/playlist-importer/releases/download/latest/source.json` per ricevere gli aggiornamenti.
 - In Development Mode l'app funziona solo per il titolare (con Premium) e fino a 5 utenti aggiunti nella dashboard Spotify.
 
 ## Demus

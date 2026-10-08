@@ -5,7 +5,7 @@ import Security
 import UIKit
 
 /// Spotify Web API with the official PKCE login: no client secret, tokens only in the Keychain.
-/// Endpoints after the February 2026 changes: POST /me/playlists, POST /playlists/{id}/items.
+/// Endpoints after the February 2026 changes: POST /me/playlists, GET/POST /playlists/{id}/items.
 @MainActor
 final class Spotify: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
     enum Failure: LocalizedError {
@@ -24,13 +24,27 @@ final class Spotify: NSObject, ObservableObject, ASWebAuthenticationPresentation
 
     private let clientID = Bundle.main.object(forInfoDictionaryKey: "SpotifyClientID") as? String ?? ""
     private let redirectURI = Bundle.main.object(forInfoDictionaryKey: "SpotifyRedirectURI") as? String ?? ""
-    private let scope = "playlist-modify-private"
+    /// Reading your playlists is what lets the app find the ones you already have and only add what is missing.
+    private let scope = "playlist-read-private playlist-modify-private playlist-modify-public"
     private let api = URL(string: "https://api.spotify.com/v1")!
     private let tokenURL = URL(string: "https://accounts.spotify.com/api/token")!
 
-    @Published private(set) var isLoggedIn = Keychain.read("refresh") != nil
+    /// A login from an older version (fewer permissions) counts as logged out, so the next one asks for all of them.
+    @Published private(set) var isLoggedIn = false
     private var accessToken: String?
     private var expiry = Date.distantPast
+
+    struct Playlist: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let count: Int
+        let url: URL?
+    }
+
+    override init() {
+        super.init()
+        isLoggedIn = Keychain.read("refresh") != nil && UserDefaults.standard.string(forKey: "spotifyScope") == scope
+    }
 
     // MARK: Login (PKCE)
 
@@ -59,6 +73,7 @@ final class Spotify: NSObject, ObservableObject, ASWebAuthenticationPresentation
             .queryItems?.first(where: { $0.name == "code" })?.value else { throw Failure.cancelled }
         try await token(["grant_type": "authorization_code", "code": code, "redirect_uri": redirectURI,
                          "client_id": clientID, "code_verifier": verifier])
+        UserDefaults.standard.set(scope, forKey: "spotifyScope")
     }
 
     func logout() {
@@ -153,17 +168,59 @@ final class Spotify: NSObject, ObservableObject, ASWebAuthenticationPresentation
         }
     }
 
-    /// Creates a private playlist and adds the tracks in the given order, 100 at a time (appending keeps order).
+    /// Creates a private playlist and adds the tracks in the given order.
     func createPlaylist(name: String, uris: [String]) async throws -> (id: String, url: URL?) {
         let created = try await send("POST", "me/playlists", body: ["name": name, "public": false,
                                                                      "description": "Creata con Playlist Importer"])
         guard let id = created["id"] as? String else { throw Failure.http(0, "playlist senza id") }
+        try await add(uris, to: id)
+        let web = (created["external_urls"] as? [String: Any])?["spotify"] as? String
+        return (id, web.flatMap(URL.init(string:)))
+    }
+
+    /// Appends 100 at a time: appending keeps the order.
+    func add(_ uris: [String], to id: String) async throws {
         for start in stride(from: 0, to: uris.count, by: 100) {
             let chunk = Array(uris[start..<min(start + 100, uris.count)])
             _ = try await send("POST", "playlists/\(id)/items", body: ["uris": chunk])
         }
-        let web = (created["external_urls"] as? [String: Any])?["spotify"] as? String
-        return (id, web.flatMap(URL.init(string:)))
+    }
+
+    /// Your own playlists (the only ones the app may change), in the order Spotify lists them.
+    func myPlaylists() async throws -> [Playlist] {
+        let me = try await send("GET", "me")["id"] as? String
+        var out: [Playlist] = []
+        var offset = 0
+        while true {
+            let page = try await send("GET", "me/playlists", query: [.init(name: "limit", value: "50"), .init(name: "offset", value: "\(offset)")])
+            let items = page["items"] as? [[String: Any]] ?? []
+            for p in items {
+                guard let id = p["id"] as? String, let name = p["name"] as? String,
+                      (p["owner"] as? [String: Any])?["id"] as? String == me else { continue }
+                // "items" since February 2026, "tracks" before
+                let total = ((p["items"] ?? p["tracks"]) as? [String: Any])?["total"] as? Int ?? 0
+                let web = (p["external_urls"] as? [String: Any])?["spotify"] as? String
+                out.append(Playlist(id: id, name: name, count: total, url: web.flatMap(URL.init(string:))))
+            }
+            offset += items.count
+            if items.isEmpty || page["next"] as? String == nil { break }
+        }
+        return out
+    }
+
+    /// The track URIs already in a playlist.
+    func playlistURIs(_ id: String) async throws -> [String] {
+        var out: [String] = []
+        var offset = 0
+        while true {
+            let page = try await send("GET", "playlists/\(id)/items", query: [.init(name: "limit", value: "100"), .init(name: "offset", value: "\(offset)")])
+            let items = page["items"] as? [[String: Any]] ?? []
+            // each entry's object is "item" since February 2026, "track" before
+            out += items.compactMap { (($0["item"] ?? $0["track"]) as? [String: Any])?["uri"] as? String }
+            offset += items.count
+            if items.isEmpty || page["next"] as? String == nil { break }
+        }
+        return out
     }
 
     static func randomVerifier() -> String {

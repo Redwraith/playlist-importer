@@ -25,6 +25,15 @@ final class AppModel: ObservableObject {
     @Published var playlistName = ""
     @Published var created: (id: String, url: URL?)?
     @Published var createdCount = 0
+    /// Songs that were already in the playlist when it was an existing one (nil: a new playlist).
+    @Published var alreadyThere: Int?
+    /// Your Spotify playlists, reloaded every time you reach the Spotify step.
+    @Published var playlists: [Spotify.Playlist] = []
+    @Published var loadingPlaylists = false
+    /// The existing playlist to update, or nil for a new one.
+    @Published var target: String?
+    /// Name of the imported .txt, used for the suggested playlist name.
+    var sourceName: String?
 
     let spotify = Spotify()
 
@@ -34,9 +43,12 @@ final class AppModel: ObservableObject {
         return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
     }()
 
+    static let bundledName = "Rock & Metal"
+
     init() {
         if !UserDefaults.standard.bool(forKey: "bundledPlaylistShown") {
             text = Self.bundledPlaylist
+            sourceName = Self.bundledName
             UserDefaults.standard.set(true, forKey: "bundledPlaylistShown")
         }
     }
@@ -66,7 +78,11 @@ final class AppModel: ObservableObject {
                 return Item(line: line, status: .found, chosen: track(line), alternatives: [])
             }
         }
-        playlistName = "THE HEAVY ARCHIVE"
+        sourceName = Self.bundledName
+        playlistName = Matcher.suggestedName(fileName: sourceName, lines: lines)
+        playlists = [.init(id: "p1", name: "Rock & Metal", count: 120, url: nil),
+                     .init(id: "p2", name: "Allenamento", count: 48, url: nil),
+                     .init(id: "p3", name: "Viaggio in auto", count: 75, url: nil)]
         switch args[i + 1] {
         case "summary": step = .summary
         case "review": step = .review
@@ -77,7 +93,8 @@ final class AppModel: ObservableObject {
             case "spotify": step = .spotify
             case "done":
                 created = ("demo", URL(string: "https://open.spotify.com/playlist/demo"))
-                createdCount = readyTracks.count
+                createdCount = 42
+                alreadyThere = 120
                 step = .done
             default: step = .demus
             }
@@ -88,6 +105,13 @@ final class AppModel: ObservableObject {
 
     func loadBundledPlaylist() {
         text = Self.bundledPlaylist
+        sourceName = Self.bundledName
+        invalid = []
+    }
+
+    func loadFile(_ name: String, _ content: String) {
+        text = content
+        sourceName = name
         invalid = []
     }
 
@@ -180,15 +204,53 @@ final class AppModel: ObservableObject {
 
     // MARK: Spotify
 
-    func createPlaylist() async {
+    func openSpotifyStep() {
+        if playlistName.trimmingCharacters(in: .whitespaces).isEmpty {
+            playlistName = Matcher.suggestedName(fileName: sourceName, lines: items.map(\.line))
+        }
+        step = .spotify
+    }
+
+    /// Always read fresh from Spotify, so playlists made elsewhere show up too.
+    func loadPlaylists() async {
+        guard spotify.isLoggedIn else { return }
+        loadingPlaylists = true
+        defer { loadingPlaylists = false }
+        do {
+            playlists = try await spotify.myPlaylists()
+            if let target, !playlists.contains(where: { $0.id == target }) { self.target = nil }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// The playlist that will be updated: the one picked, or one you already have with the typed name.
+    var existingTarget: Spotify.Playlist? {
+        if let target { return playlists.first { $0.id == target } }
+        let name = Matcher.normalize(playlistName)
+        return name.isEmpty ? nil : playlists.first { Matcher.normalize($0.name) == name }
+    }
+
+    /// A new playlist gets every song in order; an existing one gets only the songs it is missing, appended in order.
+    func savePlaylist() async {
         let name = playlistName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { error = "Dai un nome alla playlist."; return }
+        guard existingTarget != nil || !name.isEmpty else { error = "Dai un nome alla playlist."; return }
         busy = true
         defer { busy = false }
         do {
-            let tracks = readyTracks
-            created = try await spotify.createPlaylist(name: name, uris: tracks.map(\.uri))
-            createdCount = tracks.count
+            let uris = readyTracks.map(\.uri)
+            if let existing = existingTarget {
+                let present = Set(try await spotify.playlistURIs(existing.id))
+                let missing = uris.filter { !present.contains($0) }
+                try await spotify.add(missing, to: existing.id)
+                created = (existing.id, existing.url)
+                createdCount = missing.count
+                alreadyThere = uris.count - missing.count
+            } else {
+                created = try await spotify.createPlaylist(name: name, uris: uris)
+                createdCount = uris.count
+                alreadyThere = nil
+            }
             step = .done
         } catch {
             self.error = error.localizedDescription
@@ -220,6 +282,9 @@ final class AppModel: ObservableObject {
         items = []
         invalid = []
         created = nil
+        alreadyThere = nil
+        target = nil
+        playlistName = ""
         step = .input
     }
 }
