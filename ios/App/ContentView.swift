@@ -257,30 +257,47 @@ struct DoneView: View {
                 Text("\(model.createdCount) brani").foregroundStyle(.secondary)
             }
             Spacer()
-            BigButton("Apri in Spotify") { model.openInSpotify() }
+            if let status = model.demusStatus {
+                Label(status, systemImage: "doc.on.clipboard").font(.footnote).foregroundStyle(.secondary)
+            }
+            if model.busy { ProgressView() } else {
+                BigButton("Importa in Demus", secondary: !model.forDemus) { Task { await model.importInDemus() } }
+                BigButton("Apri in Spotify", secondary: model.forDemus) { model.openInSpotify() }
+            }
+            Text("Per Demus la playlist diventa pubblica: Demus la importa dal link.")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
             if let url = model.created?.url {
-                ShareLink("Condividi link (anche per Demus)", item: url)
+                ShareLink("Condividi link", item: url)
             }
         }
         .padding()
     }
 }
 
-/// Demus has no documented import or API: the list in order, ready to copy, share or save as .txt.
+/// Demus has no API: the automatic way is through a Spotify playlist (Demus imports its link);
+/// the manual way is the list in order, ready to copy, share or save as .txt.
 struct DemusView: View {
     @EnvironmentObject private var model: AppModel
     @State private var copied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Demus non ha un'importazione automatica documentata. Copia l'elenco e cerca i brani in Demus nell'ordine; se hai già creato la playlist Spotify, puoi provare a incollarne il link in Demus.")
+            Text("Importa in Demus").font(.headline)
+            Text("Demus importa le playlist dal link Spotify. L'app crea (o aggiorna) la playlist su Spotify nello stesso ordine, poi copia il link e apre Demus: lì tocca Playlist → + e incolla.")
+                .font(.footnote).foregroundStyle(.secondary)
+            BigButton("Crea su Spotify e importa in Demus") {
+                model.forDemus = true
+                model.openSpotifyStep()
+            }
+            Divider()
+            Text("Oppure a mano: l'elenco in ordine, con i nomi esatti trovati su Spotify.")
                 .font(.footnote).foregroundStyle(.secondary)
             ScrollView {
                 Text(model.demusText).font(.callout.monospaced()).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
             }
             .padding(8)
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-            BigButton(copied ? "Copiato" : "Copia elenco") {
+            BigButton(copied ? "Copiato" : "Copia elenco", secondary: true) {
                 UIPasteboard.general.string = model.demusText
                 copied = true
             }

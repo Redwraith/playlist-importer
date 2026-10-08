@@ -178,6 +178,11 @@ final class Spotify: NSObject, ObservableObject, ASWebAuthenticationPresentation
         return (id, web.flatMap(URL.init(string:)))
     }
 
+    /// Demus imports a playlist from its link, which only works when the playlist is public.
+    func makePublic(_ id: String) async throws {
+        _ = try await send("PUT", "playlists/\(id)", body: ["public": true])
+    }
+
     /// Appends 100 at a time: appending keeps the order.
     func add(_ uris: [String], to id: String) async throws {
         for start in stride(from: 0, to: uris.count, by: 100) {

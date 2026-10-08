@@ -32,6 +32,9 @@ final class AppModel: ObservableObject {
     @Published var loadingPlaylists = false
     /// The existing playlist to update, or nil for a new one.
     @Published var target: String?
+    /// The Spotify playlist is the way into Demus: Demus imports it from its link.
+    @Published var forDemus = false
+    @Published var demusStatus: String?
     /// Name of the imported .txt, used for the suggested playlist name.
     var sourceName: String?
 
@@ -269,6 +272,24 @@ final class AppModel: ObservableObject {
 
     // MARK: Demus
 
+    static let demusAppStore = URL(string: "https://apps.apple.com/app/id6474685600")!
+
+    /// Demus has no API: it imports a Spotify playlist from its link (Playlist > + > paste the link).
+    /// So: make the playlist public (Demus reads the link from outside your account), copy the link, open Demus.
+    func importInDemus() async {
+        guard let created, let url = created.url else { error = "Link della playlist non disponibile."; return }
+        busy = true
+        defer { busy = false }
+        do { try await spotify.makePublic(created.id) } catch { self.error = error.localizedDescription; return }
+        UIPasteboard.general.url = url
+        UIPasteboard.general.string = url.absoluteString
+        demusStatus = "Link copiato. In Demus: Playlist → + → incolla il link."
+        // the Demus app if a demus:// link opens it, otherwise its App Store page (which shows "Apri" when installed)
+        UIApplication.shared.open(URL(string: "demus://")!) { opened in
+            if !opened { UIApplication.shared.open(Self.demusAppStore) }
+        }
+    }
+
     /// Demus has no documented import: the most useful output is the list in order, one song per line,
     /// with the names as Spotify wrote them when found (so searching them in Demus is exact).
     var demusText: String {
@@ -284,6 +305,8 @@ final class AppModel: ObservableObject {
         created = nil
         alreadyThere = nil
         target = nil
+        forDemus = false
+        demusStatus = nil
         playlistName = ""
         step = .input
     }

@@ -1,6 +1,6 @@
 # Playlist Importer
 
-Incolla una lista `Artista - Titolo` (o importa un `.txt`), l'app trova i brani su Spotify, ti fa correggere quelli dubbi e crea la playlist **nello stesso ordine**. Per Demus prepara l'elenco ordinato da copiare.
+Incolla una lista `Artista - Titolo` (o importa un `.txt`), l'app trova i brani su Spotify, ti fa correggere quelli dubbi e crea la playlist **nello stesso ordine**. Per Demus passa dal link della playlist Spotify, che Demus sa importare.
 
 ## Flusso
 1. Incolla o importa `.txt` → **ANALIZZA** (al primo uso: accesso a Spotify).
@@ -23,7 +23,11 @@ Incolla una lista `Artista - Titolo` (o importa un `.txt`), l'app trova i brani 
 - In Development Mode l'app funziona solo per il titolare (con Premium) e fino a 5 utenti aggiunti nella dashboard Spotify.
 
 ## Demus
-Non ha API né importazione documentata. L'app genera l'elenco ordinato (con i nomi esatti trovati su Spotify) da copiare o condividere, e se hai già creato la playlist Spotify ne offre il link: una guida non ufficiale dice che Demus può importare link di playlist Spotify, ma non è verificato.
+Non ha API. Demus però importa una playlist incollando il link di una playlist Spotify (Playlist → + → incolla), come riportano guide non ufficiali. Quindi "Importa in Demus":
+1. crea o aggiorna la playlist su Spotify, nello stesso ordine;
+2. la rende pubblica (Demus legge il link dall'esterno, una playlist privata non la vede);
+3. copia il link e apre Demus (o la sua pagina App Store).
+In alternativa resta l'elenco ordinato da copiare o condividere.
 
 ## Test
 - `python3 tests/run_tests.py`: logica di matching (16 casi).
