@@ -87,9 +87,10 @@ struct SummaryView: View {
         VStack(spacing: 20) {
             Text("\(model.items.count) brani").font(.largeTitle.bold())
             VStack(alignment: .leading, spacing: 10) {
-                Label("\(model.count(.found)) trovati", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                Label("\(model.count(.verify)) da verificare", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Label("\(model.count(.missing)) non trovati", systemImage: "xmark.circle.fill").foregroundStyle(.red)
+                let found = model.count(.found), verify = model.count(.verify), missing = model.count(.missing)
+                Label("\(found) \(found == 1 ? "trovato" : "trovati")", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                Label("\(verify) da verificare", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Label("\(missing) non \(missing == 1 ? "trovato" : "trovati")", systemImage: "xmark.circle.fill").foregroundStyle(.red)
             }
             .font(.title3)
             Spacer()
@@ -113,7 +114,16 @@ struct ReviewView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            BigButton("CONTINUA") { model.next() }.disabled(!model.pending.isEmpty).padding()
+            // on an opaque bar, so it never covers the last card
+            VStack(spacing: 6) {
+                if !model.pending.isEmpty {
+                    Text("Scegli una versione o salta: \(model.pending.count) da sistemare")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                BigButton("CONTINUA") { model.next() }.disabled(!model.pending.isEmpty)
+            }
+            .padding()
+            .background(.bar)
         }
     }
 }
