@@ -28,6 +28,24 @@ final class AppModel: ObservableObject {
 
     let spotify = Spotify()
 
+    /// The rock/metal playlist (165 songs) that ships with the app: filled in on first launch.
+    static let bundledPlaylist: String = {
+        guard let url = Bundle.main.url(forResource: "rock_metal_165", withExtension: "txt") else { return "" }
+        return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+    }()
+
+    init() {
+        if !UserDefaults.standard.bool(forKey: "bundledPlaylistShown") {
+            text = Self.bundledPlaylist
+            UserDefaults.standard.set(true, forKey: "bundledPlaylistShown")
+        }
+    }
+
+    func loadBundledPlaylist() {
+        text = Self.bundledPlaylist
+        invalid = []
+    }
+
     var lineCount: Int { Matcher.parse(text).lines.count }
 
     /// A duplicate follows the song it repeats: fixing one fixes both.

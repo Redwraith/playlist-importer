@@ -51,7 +51,10 @@ struct InputView: View {
             HStack {
                 Text("\(model.lineCount) brani").font(.headline)
                 Spacer()
-                Button("Importa .txt") { importing = true }
+                Menu("Importa") {
+                    Button("File .txt…") { importing = true }
+                    Button("Playlist rock/metal (165)") { model.loadBundledPlaylist() }
+                }
             }
             if !model.invalid.isEmpty {
                 Text("Righe non valide (manca \" - \"): " + model.invalid.map { "\($0.lineNumber)" }.joined(separator: ", "))
