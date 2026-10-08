@@ -105,3 +105,25 @@ def test_full_sample_order_preserved():
     assert [d.line.index for d in decisions] == [0, 1, 2, 3, 4]
     assert all(d.status == "found" for d in decisions)
     assert [d.chosen.title for d in decisions] == ["Master of Puppets", "Symbolic", "Schism", "Flying Whales", "Hallowed Be Thy Name"]
+
+def _fixture():
+    path = os.path.join(os.path.dirname(__file__), "fixtures", "rock_metal_165.txt")
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+def test_real_playlist_165_lines_in_order():
+    lines, invalid = parse(_fixture())
+    assert len(lines) == 165 and invalid == []
+    assert [l.index for l in lines] == list(range(165))
+    assert lines[0].raw == "Queen - Stone Cold Crazy"
+    assert lines[-1].raw == "Deep Purple - Smoke on the Water"
+
+def test_typo_in_title_goes_to_verify_not_found():
+    lines, _ = parse("Electric Wizard - Funeraloplis")
+    d = decide(lines[0], [c("Electric Wizard", "Funeralopolis")])
+    assert d.status == "verify"
+
+def test_accent_missing_in_input_still_found():
+    lines, _ = parse("Megadeth - A Tout le Monde")
+    d = decide(lines[0], [c("Megadeth", "À Tout le Monde")])
+    assert d.status == "found"

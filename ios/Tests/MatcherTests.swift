@@ -102,4 +102,25 @@ final class MatcherTests: XCTestCase {
             }
         }
     }
+
+    /// The real 165-song list: every line read, same order as the file.
+    func testRealPlaylist165() throws {
+        let url = try XCTUnwrap(Bundle(for: MatcherTests.self).url(forResource: "rock_metal_165", withExtension: "txt"))
+        let (lines, invalid) = Matcher.parse(try String(contentsOf: url, encoding: .utf8))
+        XCTAssertEqual(lines.count, 165)
+        XCTAssertTrue(invalid.isEmpty)
+        XCTAssertEqual(lines.map(\.index), Array(0..<165))
+        XCTAssertEqual(lines.first?.raw, "Queen - Stone Cold Crazy")
+        XCTAssertEqual(lines.last?.raw, "Deep Purple - Smoke on the Water")
+    }
+
+    func testTypoGoesToVerify() {
+        let line = Matcher.parse("Electric Wizard - Funeraloplis").lines[0]
+        XCTAssertEqual(Matcher.decide(line, [t("Electric Wizard", "Funeralopolis")]).status, .verify)
+    }
+
+    func testMissingAccentStillFound() {
+        let line = Matcher.parse("Megadeth - A Tout le Monde").lines[0]
+        XCTAssertEqual(Matcher.decide(line, [t("Megadeth", "À Tout le Monde")]).status, .found)
+    }
 }
