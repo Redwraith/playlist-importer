@@ -1,0 +1,59 @@
+name: Screenshots
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["ios/**", ".github/workflows/screenshots.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build for the simulator (Debug, with the demo screens)
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          xcodebuild -project PlaylistImporter.xcodeproj -scheme PlaylistImporter -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 5
+          exit ${PIPESTATUS[0]}
+      - name: Take the screenshots
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in sorted(d.items(), reverse=True) if 'iOS' in k for x in v if x['name'].endswith('Pro')))")
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl status_bar "$DEVICE" override --time "9:41" --batteryLevel 100 --cellularBars 4 || true
+          xcrun simctl install "$DEVICE" build/Build/Products/Debug-iphonesimulator/PlaylistImporter.app
+          mkdir -p shots
+          n=1
+          for appearance in light dark; do
+            xcrun simctl ui "$DEVICE" appearance $appearance
+            for step in input summary review destination spotify done demus; do
+              xcrun simctl launch "$DEVICE" app.playlistimporter.ios -screenshotStep $step
+              sleep 6
+              xcrun simctl io "$DEVICE" screenshot "shots/$(printf %02d $n)-$step-$appearance.png"
+              xcrun simctl terminate "$DEVICE" app.playlistimporter.ios || true
+              n=$((n+1))
+            done
+          done
+          ls -la shots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ios/shots
+      - name: Publish to the "screenshots" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view screenshots >/dev/null 2>&1 || \
+            gh release create screenshots --prerelease --title "Screenshot dell'app" --notes "Schermate dal simulatore (dati di esempio)."
+          gh release upload screenshots shots/*.png --clobber

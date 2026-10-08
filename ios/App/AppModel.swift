@@ -41,6 +41,51 @@ final class AppModel: ObservableObject {
         }
     }
 
+#if DEBUG
+    /// Screenshots in the simulator: `-screenshotStep summary` shows that screen with sample results
+    /// built from the bundled playlist (no Spotify login in the simulator). Debug builds only.
+    func applyScreenshotStep() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-screenshotStep"), i + 1 < args.count else { return }
+        text = Self.bundledPlaylist
+        let lines = Matcher.parse(text).lines
+        func track(_ line: Matcher.Line, _ name: String? = nil) -> Track {
+            Track(id: "\(line.index)-\(name ?? line.title)", uri: "spotify:track:\(line.index)", name: name ?? line.title,
+                  artists: [line.artist], album: "Album")
+        }
+        items = lines.map { line in
+            switch line.index {
+            case 19:  // the typo: Funeraloplis
+                return Item(line: line, status: .verify, chosen: nil,
+                            alternatives: [track(line, "Funeralopolis"), track(line, "Funeralopolis - Live")])
+            case 90:  // Obscura with "The"
+                return Item(line: line, status: .verify, chosen: nil, alternatives: [track(line, "Anticosmic Overload")])
+            case 112:
+                return Item(line: line, status: .missing, chosen: nil, alternatives: [])
+            default:
+                return Item(line: line, status: .found, chosen: track(line), alternatives: [])
+            }
+        }
+        playlistName = "THE HEAVY ARCHIVE"
+        switch args[i + 1] {
+        case "summary": step = .summary
+        case "review": step = .review
+        case "destination", "spotify", "done", "demus":
+            for item in pending { if let first = item.alternatives.first { choose(first, for: item) } else { skip(item) } }
+            switch args[i + 1] {
+            case "destination": step = .destination
+            case "spotify": step = .spotify
+            case "done":
+                created = ("demo", URL(string: "https://open.spotify.com/playlist/demo"))
+                createdCount = readyTracks.count
+                step = .done
+            default: step = .demus
+            }
+        default: step = .input
+        }
+    }
+#endif
+
     func loadBundledPlaylist() {
         text = Self.bundledPlaylist
         invalid = []

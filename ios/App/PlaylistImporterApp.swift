@@ -7,6 +7,9 @@ struct PlaylistImporterApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView().environmentObject(model)
+            #if DEBUG
+                .onAppear { model.applyScreenshotStep() }
+            #endif
         }
     }
 }
