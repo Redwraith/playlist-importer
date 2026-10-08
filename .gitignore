@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+ios/*.xcodeproj/
+ios/build/
+ios/build-tests/
+ios/out/
+ios/App/Info.plist
+.DS_Store

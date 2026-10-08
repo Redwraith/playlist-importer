@@ -1,0 +1,62 @@
+name: iOS app (.ipa)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Logic tests (Python reference)
+        working-directory: .
+        run: python3 tests/run_tests.py
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Unit tests (simulator)
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in sorted(d.items(), reverse=True) if 'iOS' in k for x in v if x['name'].startswith('iPhone')))")
+          xcodebuild test -project PlaylistImporter.xcodeproj -scheme PlaylistImporter \
+            -destination "id=$DEVICE" -derivedDataPath build-tests CODE_SIGNING_ALLOWED=NO | tail -n 40
+          exit ${PIPESTATUS[0]}
+
+      - name: Build (unsigned, SideStore signs it with your Apple ID)
+        run: |
+          xcodebuild -project PlaylistImporter.xcodeproj -scheme PlaylistImporter -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -n 20
+          exit ${PIPESTATUS[0]}
+
+      - name: Package .ipa
+        run: |
+          mkdir -p out/Payload
+          cp -R build/Build/Products/Release-iphoneos/PlaylistImporter.app out/Payload/
+          (cd out && zip -qry PlaylistImporter.ipa Payload)
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PlaylistImporter-ipa
+          path: ios/out/PlaylistImporter.ipa
+
+      - name: Publish to the "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view latest >/dev/null 2>&1 || \
+            gh release create latest --title "Playlist Importer" --notes "App non firmata: installala con SideStore."
+          gh release upload latest out/PlaylistImporter.ipa --clobber
